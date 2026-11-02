@@ -1,0 +1,41 @@
+{
+  "counter": "__hux_cost",
+  "functions": [
+    {
+      "blocks": [
+        {
+          "index": 0,
+          "name": "",
+          "weight": 7
+        },
+        {
+          "index": 1,
+          "name": "",
+          "weight": 4
+        },
+        {
+          "index": 2,
+          "name": "",
+          "weight": 5
+        },
+        {
+          "index": 3,
+          "name": "",
+          "weight": 4
+        },
+        {
+          "index": 4,
+          "name": "",
+          "weight": 2
+        }
+      ],
+      "name": "loop3"
+    }
+  ],
+  "top": "loop3",
+  "uncounted_calls": {
+    "external": {},
+    "indirect": 0,
+    "inline_asm": 0
+  }
+}
