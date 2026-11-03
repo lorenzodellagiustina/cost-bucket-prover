@@ -5,7 +5,13 @@
 #   optional: HI (unset = unbounded), INCLUDES, TIMEOUT (seconds, default 120),
 #   CEX (counterexample harness .ll, written when the bucket is reachable).
 #
-# OUTPUT holds `verdict`: reachable | empty | unknown | timeout | error, plus timing and the log.
+# HARNESS is a C file with a `main` that:
+# - assigns a non deterministic value to every input of the top function;
+# - calls HUX_START() and the top function;
+# - calls HUX_CHECK_BUCKET() with the bucket bounds LO and HI (SeaHorn will check whether the cost
+#   is not in [LO, HI) and return a counterexample otherwise).
+#
+# OUTPUT holds the verdict: reachable | empty | unknown | timeout | error, plus timing and the log.
 # The script exits 0 for every verdict; a non-zero exit means it was called wrongly.
 set -uo pipefail
 : "${HARNESS:?}" "${IR:?}" "${LO:?}" "${OUTPUT:?}"
@@ -14,10 +20,12 @@ TIMEOUT=${TIMEOUT:-120}
 LOG=${OUTPUT%.*}.log
 CEX=${CEX:-${OUTPUT%.*}.cex.ll}
 
-# `sea` keeps only the last -I flag, so include directories go through the environment.
+# SeaHorn keeps only the last -I flag, so include dirs are declared in the env.
 C_INCLUDE_PATH=$PREFIX/include
 for dir in ${INCLUDES:-}; do C_INCLUDE_PATH+=":$dir"; done
 export C_INCLUDE_PATH
+
+# Defines of the cost bounds.
 defines=("-DHUX_LO=${LO}LL")
 [ -n "${HI:-}" ] && defines+=("-DHUX_HI=${HI}LL")
 

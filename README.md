@@ -16,24 +16,36 @@ The tool is a Docker image driven through `make`.
    (read the point below) resets the counter right before calling the top function, so after it
    returns `__hux_cost` holds the cost of that call's executed path, whatever the harness ran
    before.
-2. **`prove`.** Compiles a *harness* with the bucket bounds and asks SeaHorn (Spacer, a CHC
-   solver) whether the error state `lo <= __hux_cost < hi` is reachable.
+2. **`prove`.** Compiles a *harness* with the bucket bounds and asks SeaHorn (Spacer, a CHC solver)
+   whether the error state `lo <= __hux_cost < hi` is reachable.
    - **unsat**: the bucket is **empty**, proven for every input admitted by the harness.
-   - **sat**: the bucket is **reachable**. SeaHorn also writes a counterexample harness (`.ll`)
-     with the values of the nondet calls.
-3. **`replay`.** Builds the harness natively, links it with the counterexample, runs it, and
-   prints the measured cost together with every input as executed. A reachable bucket only
-   becomes a witness when the replayed cost actually lies in the bucket.
+   - **sat**: the bucket is **reachable**. SeaHorn also writes a counterexample harness (`.ll`) with
+     the values of the nondet calls.
+3. **`replay`.** Builds the harness natively, links it with the counterexample, runs it, and prints
+   the measured cost together with every input as executed. A reachable bucket only becomes a
+   witness when the replayed cost actually lies in the bucket.
 
 ## Build
 
-SeaHorn images exist only for amd64. On Apple Silicon the image runs under emulation.
+To build the image, run in the repo root:
 
 ```bash
-docker build --platform linux/amd64 -t cost-bucket-prover:dev .
+docker build -t cost-bucket-prover:$(git rev-parse HEAD) .
 ```
 
-## Commands
+The image is tagged with the hash of the commit it is built from (`<ref>` below).
+
+> [!NOTE]
+> SeaHorn images exist only for amd64. On Apple Silicon build the image for amd64:
+>
+> ```bash
+> docker build --platform linux/amd64 -t cost-bucket-prover:$(git rev-parse --short=9 HEAD) .
+> ```
+>
+> Then the image can be run on Apple Silicon through emulation.
+
+
+## Usage
 
 The entrypoint is `make -f /opt/cost-bucket-prover/Makefile`, so a command is a target plus
 variables. All paths are container paths, relative to the working directory `/data`.
@@ -47,7 +59,7 @@ variables. All paths are container paths, relative to the working directory `/da
 Example:
 
 ```bash
-docker run --rm --platform linux/amd64 -v "$PWD":/data cost-bucket-prover:dev \
+docker run --rm --platform linux/amd64 -v "$PWD":/data cost-bucket-prover:<ref> \
   prove HARNESS=harness.c IR=out.ll LO=52 HI=53 OUTPUT=b52.yaml
 ```
 
@@ -200,7 +212,7 @@ Docker outside of Docker: the daemon is the host's, so the bind mount takes the 
 
 ```bash
 docker run --rm --platform linux/amd64 -v "$PWD/tests":/data/tests \
-  --entrypoint bash cost-bucket-prover:dev tests/run.sh
+  --entrypoint bash cost-bucket-prover:<ref> tests/run.sh
 ```
 
 - **`loop3`** (cost `13n + 13`): checks exact block weights, exact verdicts, and that each

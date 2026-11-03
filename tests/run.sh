@@ -1,7 +1,7 @@
 #!/bin/bash
 # End-to-end tests of the image's make interface. Run from the repository root:
 #   docker run --rm --platform linux/amd64 -v "$PWD/tests":/data/tests \
-#     --entrypoint bash cost-bucket-prover:dev tests/run.sh
+#     --entrypoint bash cost-bucket-prover:<ref> tests/run.sh
 set -uo pipefail
 cd /data
 M="make -s -f $PREFIX/Makefile"
