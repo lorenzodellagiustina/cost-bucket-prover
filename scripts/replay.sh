@@ -4,9 +4,15 @@
 #
 # Inputs (environment): HARNESS, IR, CEX, OUTPUT (YAML); optional: INCLUDES, TIMEOUT (default 30).
 #
-# OUTPUT holds `status`: ok | assume_violated | crash | timeout | build_error, the `cost` (when ok),
-# every recorded input as executed, and `unrecorded`: nondet types the counterexample left
-# undetermined (they returned 0). The script exits 0 for every status.
+# OUTPUT holds `status`, the `cost` (when ok), every recorded input as executed, and `unrecorded`:
+# nondet types the counterexample left undetermined (they returned 0). `status` is:
+#   ok               the program ran to the end and printed its cost: the only status that can give
+#                    a witness (the cost must still lie in the bucket).
+#   assume_violated  a __VERIFIER_assume failed: the counterexample's values are not valid inputs.
+#   crash            the program exited non-zero, or without reaching HUX_CHECK_BUCKET().
+#   timeout          the program did not finish within TIMEOUT.
+#   build_error      the program could not be compiled or linked; the log has the messages.
+# The script exits 0 for every status.
 set -uo pipefail
 : "${HARNESS:?}" "${IR:?}" "${CEX:?}" "${OUTPUT:?}"
 PREFIX=${PREFIX:-/opt/cost-bucket-prover}
@@ -18,13 +24,20 @@ EXE=${OUTPUT%.*}.exe
 includes=("-I$PREFIX/include")
 for dir in ${INCLUDES:-}; do includes+=("-I$dir"); done
 
-list() { # key awk-program stdout-file: a YAML list, `[]` when empty
+# list KEY AWK_PROGRAM FILE
+# Writes KEY as a YAML list. Each line of FILE (what the replayed program printed) that AWK_PROGRAM
+# matches becomes one item.
+list() {
   local items=""
   [ -n "$3" ] && items=$(awk "$2" "$3")
   if [ -n "$items" ]; then printf '%s:\n%s\n' "$1" "$items"; else echo "$1: []"; fi
 }
 
-write() { # status [stdout file]
+# write STATUS [FILE]
+# Writes the result YAML to OUTPUT: the status, the cost (from FILE when STATUS is ok, else null),
+# the inputs and unrecorded nondet types printed in FILE, and the log path. FILE is the replayed
+# program's stdout: it is omitted when the program did not run (build_error).
+write() {
   {
     echo "status: $1"
     if [ "$1" = ok ]; then
