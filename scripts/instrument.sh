@@ -1,6 +1,8 @@
 #!/bin/bash
-# Compiles SRCS to LLVM IR, links them, and inserts the cost counter in every function reachable
-# from TOP_FUNCTION.
+# Compiles SRCS to LLVM IR, links them, and inserts the cost counter in every function defined in
+# them via the CostCounterPass. TOP_FUNCTION is the function whose cost will be measured. It does
+# not limit the instrumentation: it only decides which calls the report lists as not counted (those
+# that TOP_FUNCTION may execute).
 #
 # Inputs (environment): SRCS, TOP_FUNCTION, OUTPUT (instrumented .ll);
 #   optional: INCLUDES, CFLAGS, WEIGHTS (YAML), REPORT (pass report, YAML).
@@ -8,13 +10,14 @@ set -euo pipefail
 : "${SRCS:?}" "${TOP_FUNCTION:?}" "${OUTPUT:?}"
 PREFIX=${PREFIX:-/opt/cost-bucket-prover}
 
+# Work dir cleared on exit.
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 includes=()
 for dir in ${INCLUDES:-}; do includes+=("-I$dir"); done
 
-# -O0 without optnone: the IR keeps the source structure, and SeaHorn may still optimize it.
+# Compile and link to LLVM bitcode.
 bcs=()
 for src in $SRCS; do
   bc="$work/$(basename "$src").bc"

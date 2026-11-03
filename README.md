@@ -13,8 +13,9 @@ The tool is a Docker image driven through `make`.
 1. **`instrument`.** Compiles the sources to LLVM 14 IR and links them. The cost-counter pass
    (`pass/`) then adds `__hux_cost += w` at the start of every basic block of every function
    defined in the sources. `w` is the sum of the weights of the block's instructions. The harness
-   resets the counter right before calling the top function, so after it returns `__hux_cost`
-   holds the cost of that call's executed path, whatever the harness ran before.
+   (read the point below) resets the counter right before calling the top function, so after it
+   returns `__hux_cost` holds the cost of that call's executed path, whatever the harness ran
+   before.
 2. **`prove`.** Compiles a *harness* with the bucket bounds and asks SeaHorn (Spacer, a CHC
    solver) whether the error state `lo <= __hux_cost < hi` is reachable.
    - **unsat**: the bucket is **empty**, proven for every input admitted by the harness.
