@@ -3,8 +3,12 @@
  * A harness is a C file with a `main` that:
  *   1. assigns every input of the top function from a __VERIFIER_nondet_<type>() call,
  *   2. records each input with HUX_RECORD_<kind>(name, value),
- *   3. calls the top function,
+ *   3. calls HUX_START() right before the top function, then calls it,
  *   4. ends with HUX_CHECK_BUCKET().
+ *
+ * Every function defined in the sources is instrumented, so the harness may call other functions
+ * before the top one (e.g. a model's initialize function): HUX_START() resets the counter, so that
+ * only the top function's call is measured.
  *
  * The same file is compiled in two modes:
  *   - prove  (default): HUX_CHECK_BUCKET() is reachable-error iff the cost is in [HUX_LO, HUX_HI);
@@ -19,6 +23,9 @@
 #include <stdint.h>
 
 extern int64_t __hux_cost; /* defined by the cost-counter pass */
+
+/* Resets the cost counter: call it right before the top function. */
+#define HUX_START() (__hux_cost = 0)
 
 extern void __VERIFIER_assume(int);
 

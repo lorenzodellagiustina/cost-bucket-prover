@@ -6,16 +6,15 @@ Proves which execution-cost buckets a C/C++ function can reach. For each cost in
 - a proof that no input reaches the interval;
 - an input whose execution does reach it, checked by running it natively.
 
-The tool is a Docker image driven through `make`. Each make target is one command of the
-performance-profiler-core External Service Executor, following the same convention as the
-io-dependency-analyzer image.
+The tool is a Docker image driven through `make`.
 
 ## How it works
 
 1. **`instrument`.** Compiles the sources to LLVM 14 IR and links them. The cost-counter pass
    (`pass/`) then adds `__hux_cost += w` at the start of every basic block of every function
-   reachable from the top function. `w` is the sum of the weights of the block's instructions.
-   After the top function returns, `__hux_cost` holds the cost of the executed path.
+   defined in the sources. `w` is the sum of the weights of the block's instructions. The harness
+   resets the counter right before calling the top function, so after it returns `__hux_cost`
+   holds the cost of that call's executed path, whatever the harness ran before.
 2. **`prove`.** Compiles a *harness* with the bucket bounds and asks SeaHorn (Spacer, a CHC
    solver) whether the error state `lo <= __hux_cost < hi` is reachable.
    - **unsat**: the bucket is **empty**, proven for every input admitted by the harness.
@@ -67,8 +66,14 @@ Without a file, every instruction weighs 1. Debug intrinsics always weigh 0.
 ### Instrumentation report (`REPORT`)
 
 The report lists, for each instrumented function, its blocks and their weights. Under
-`uncounted_calls` it lists the calls whose callee is **not** counted: functions that are only
-declared (`external`, with the number of call sites), `indirect` calls, and `inline_asm`.
+`uncounted_calls` it lists the calls that the top function may execute whose callee has no code
+in the sources, so its cost is **not** counted: functions that are only declared (`external`,
+with the number of call sites) and `inline_asm`. `indirect_calls` counts the calls through a
+function pointer: their callee is counted when it is defined in the sources.
+
+The calls are collected from the functions the top function reaches through direct calls. As soon
+as one of them makes an indirect call, every function whose address is taken is considered
+reachable too, since the pass does not know which one the pointer holds.
 
 ### Harness contract (`include/hux.h`)
 
@@ -78,8 +83,12 @@ The harness is a C file with a `main` that:
    constrained with `__VERIFIER_assume`;
 2. records each input with `HUX_RECORD_INT`, `HUX_RECORD_UINT` or `HUX_RECORD_FLOAT`
    (`name`, `value`);
-3. calls the top function;
+3. calls `HUX_START()` right before the top function, then calls it;
 4. ends with `HUX_CHECK_BUCKET()`.
+
+Because every function defined in the sources is instrumented, the harness may call other
+functions before the top one, for example a model's initialize function: `HUX_START()` resets the
+counter, so only the top function's call is measured.
 
 The same file serves both `prove` and `replay`: `replay` compiles it with `-DHUX_REPLAY`. See
 `tests/*/harness.c`.
@@ -126,7 +135,8 @@ These are reported, not worked around.
 - **Depth.** Witnesses for long paths time out: on `loop3`, around 600 loop iterations. Proving
   a bucket empty above the maximum also times out when the loop bound is large (100,000 on
   `loop3`).
-- **Uncounted code.** The cost of callees listed under `uncounted_calls` is not counted.
+- **Uncounted code.** The cost of callees listed under `uncounted_calls` is not counted, and
+  neither is an indirect call to a function without code in the sources.
 - **Weights.** The default weight is "one per instruction". Weights come from a hand-written file
   and are not taken from the platform's cost model.
 
@@ -139,6 +149,10 @@ docker run --rm --platform linux/amd64 -v "$PWD/tests":/data/tests \
 
 - **`loop3`** (cost `13n + 13`): checks exact block weights, exact verdicts, and that each
   witness replays to the expected cost.
+- **`calls`**: a helper that the harness also calls before the top function (through `init`), and
+  a callee reached only through a function pointer. Checks that every defined function is
+  instrumented, that the indirect call is reported, and that the prover's witness has exactly the
+  native cost of the top function's call alone.
 - **`state_machine`** (Simulink-generated code): runs one step of the model. Its inputs are the
   `real_T` inports plus the chart state. For every bucket the suite checks:
   - a fully determined counterexample must replay inside its bucket;

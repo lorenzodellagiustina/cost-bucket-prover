@@ -52,6 +52,27 @@ check b52 52 53 reachable 52
 check b53 53 65 empty
 check b806 806 807 reachable 806
 
+# --- calls: a helper also called before the top function, a callee reached by pointer ----------
+CASE=calls HARNESS=tests/calls/harness.c INCLUDES="" IR=$OUT/calls.ll
+$M instrument SRCS=tests/calls/calls.c TOP_FUNCTION=top OUTPUT="$IR" REPORT="$OUT/calls.report.json" ||
+  fail "calls: instrument"
+python3 - "$OUT/calls.report.json" <<'EOF' || fail "calls: instrumentation report"
+import json, sys
+r = json.load(open(sys.argv[1]))
+names = {f["name"] for f in r["functions"]}
+assert {"top", "helper", "init", "twice"} <= names, names  # every defined function
+assert r["indirect_calls"] == 1, r["indirect_calls"]
+assert r["uncounted_calls"] == {"external": {}, "inline_asm": 0}, r["uncounted_calls"]
+EOF
+# Native costs of top(n) after init(), measured from the reset: the prover must agree with them.
+clang-14 -m64 -O0 tests/calls/native.c "$IR" -o "$OUT/calls_native" &&
+  "$OUT/calls_native" >"$OUT/calls.native.txt" || fail "calls: native oracle"
+cost3=$(awk '$1 == 3 { print $2 }' "$OUT/calls.native.txt")
+max=$(awk '{ print $2 }' "$OUT/calls.native.txt" | sort -n | tail -n 1)
+echo "calls native costs (n cost):" $(awk '{ printf "%s:%s ", $1, $2 }' "$OUT/calls.native.txt")
+check b3 "$cost3" "$((cost3 + 1))" reachable "$cost3"
+check above "$((max + 1))" "" empty
+
 # --- state_machine: one Simulink step, double inputs ------------------------------------------
 CASE=state_machine HARNESS=tests/state_machine/harness.c INCLUDES=tests/state_machine/src
 IR=$OUT/state_machine.ll

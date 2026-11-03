@@ -28,6 +28,7 @@ int main(void) {
                   state_machine_DW.is_active_c3_state_machine);
   HUX_RECORD_UINT("state_machine_DW.is_c3_state_machine", state_machine_DW.is_c3_state_machine);
 
+  HUX_START();
   state_machine_step();
   HUX_CHECK_BUCKET();
   return 0;
