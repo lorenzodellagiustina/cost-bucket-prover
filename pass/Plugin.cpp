@@ -1,5 +1,4 @@
-// Registers CostCounterPass with the new pass manager, as `hux-cost-counter<top=FN;...>` (see
-// CostCounterPass.h).
+// Registers CostCounterPass with the new pass manager, as `hux-cost-counter<top=FN;...>`.
 
 #include "CostCounterPass.h"
 

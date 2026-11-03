@@ -5,6 +5,8 @@
 #include "Weights.h"
 
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/Support/WithColor.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <utility>
 #include <vector>
@@ -17,7 +19,8 @@ namespace hux
   namespace
   {
 
-    // The counter, created (initialized to 0) if the module doesn't declare it yet.
+    // Returns the counter global variable. It is created (initialized to 0) if the module doesn't
+    // declare it yet.
     GlobalVariable *getOrCreateCounter(Module &M)
     {
       Type *I64 = Type::getInt64Ty(M.getContext());
@@ -25,6 +28,16 @@ namespace hux
       {
         if (G->getValueType() != I64)
           report_fatal_error(Twine(PassName) + ": '" + CounterName + "' exists with another type");
+        if (G->isConstant())
+          report_fatal_error(Twine(PassName) + ": '" + CounterName + "' is declared constant");
+        if (G->isThreadLocal())
+          report_fatal_error(Twine(PassName) + ": '" + CounterName + "' is thread-local");
+        WithColor::warning(errs(), PassName)
+            << "using the counter variable '" << CounterName << "' found in the module"
+            << (G->isDeclaration() ? " (only declared: the pass defines it)" : "")
+            << ". It must be a non-constant, non-thread-local 64-bit integer with external linkage:"
+               " if it is declared differently anywhere else (another type, size or linkage), the"
+               " behavior may be undefined.\n";
         if (G->isDeclaration())
           G->setInitializer(ConstantInt::get(I64, 0));
         return G;
@@ -33,7 +46,7 @@ namespace hux
                                 ConstantInt::get(I64, 0), CounterName);
     }
 
-    // The report's entry of each defined function, with its blocks' weights.
+    // Returns the report's entry of each defined function, with its blocks' weights.
     std::vector<FunctionEntry>
     functionEntries(Module &M, const std::vector<std::pair<BasicBlock *, uint64_t>> &Blocks)
     {

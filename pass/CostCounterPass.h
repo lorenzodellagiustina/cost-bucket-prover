@@ -8,11 +8,13 @@
 //
 // Usage (new pass manager, see Plugin.cpp):
 //   opt -load-pass-plugin=libHuxCostCounter.so \
-//       -passes='hux-cost-counter<top=FN;weights=W.yaml;report=R.yaml>' in.bc -o out.bc
+//       -passes='hux-cost-counter<top=FN;weights=W.yaml;report=R.yaml>' -S in.ll -o out.ll
 //
-// weights (optional): the cost of each instruction (see Weights.h).
-// report (optional): the instrumented blocks with their weights, plus the calls that the top
-//   function may execute whose cost is not counted (see Report.h and CallAnalysis.h).
+// Parameters:
+//   top     (required): the function whose calls are analyzed for the report.
+//   weights (optional, input): a YAML file with the cost of each instruction (see Weights.h).
+//   report  (optional, output): a YAML file the pass writes, listing the blocks it instrumented
+//     with their weights, and the calls the top function may execute whose cost is not counted.
 
 #ifndef HUX_COST_COUNTER_PASS_H
 #define HUX_COST_COUNTER_PASS_H
@@ -25,6 +27,7 @@
 namespace hux
 {
 
+  // `constexpr` needs `inline` to avoid multiple definitions in different translation units.
   inline constexpr const char *PassName = "hux-cost-counter";
   inline constexpr const char *CounterName = "__hux_cost";
 

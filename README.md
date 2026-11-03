@@ -152,6 +152,20 @@ architecture, so it is not emulated on Apple Silicon. It has LLVM 14, the versio
 image, plus CMake, Ninja and clangd. The CMake Tools extension configures `pass/` in `pass/build`,
 and clangd reads the compile commands from there.
 
+### The counter variable
+
+The pass creates the global `__hux_cost` (an `i64`, initially 0). If the module already has one,
+for example because a source includes `include/hux.h`, which declares it, the pass uses it and
+prints a warning. It refuses, with an error, a counter that is not an `i64`, that is constant (a
+store to a constant is undefined, and an optimizer may fold the counter to its initializer) or that
+is thread-local (the harness would read another thread's copy). A second variable with the same
+name would otherwise silently get another name, and the harness would read a counter that is never
+incremented.
+
+The warning also says that a counter declared differently elsewhere (another type, size or
+linkage) may cause undefined behavior. The pass only sees the module it is given, so it cannot check
+that.
+
 The pass (`pass/`) is split by responsibility:
 
 | File | Role |

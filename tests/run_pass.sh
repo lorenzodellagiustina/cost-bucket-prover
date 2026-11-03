@@ -75,5 +75,32 @@ EOF
     $(awk '$1 ~ /^[0-9]+$/ { printf "%s:%s ", $1, $2 }' "$OUT/calls.costs")
 fi
 
+# --- a counter already in the module: used with a warning if it can be incremented, else refused ---
+# user_defined: defined by the source; declared_only: declared as include/hux.h does.
+for name in user_defined declared_only; do
+  if instrument "counter_$name" top "$ROOT/tests/counter/$name.c" && native "counter_$name" "$ROOT/tests/counter/native.c"; then
+    grep -q "warning: using the counter variable '__hux_cost'" "$OUT/counter_$name.instrument.log" ||
+      fail "counter ($name): no warning that the counter found in the module is used"
+    # One variable only: a second one would have been renamed __hux_cost.1.
+    [ "$(grep -c '^@__hux_cost' "$OUT/counter_$name.ll")" -eq 1 ] && ! grep -q '__hux_cost\.1' "$OUT/counter_$name.ll" ||
+      fail "counter ($name): not exactly one __hux_cost in the instrumented IR"
+    cost=$(cat "$OUT/counter_$name.costs")
+    [ "$cost" -gt 0 ] || fail "counter ($name): the module's counter is not incremented (cost $cost)"
+    echo "counter ($name): warned, one variable, cost $cost"
+  fi
+done
+# constant, thread_local, wrong_type: instrumenting fails, naming the problem.
+for case in "constant:declared constant" "thread_local:thread-local" "wrong_type:another type"; do
+  name=${case%%:*}; message=${case#*:}
+  if SRCS="$ROOT/tests/counter/$name.c" TOP_FUNCTION=top OUTPUT="$OUT/counter_$name.ll" \
+    "$ROOT/scripts/instrument.sh" >"$OUT/counter_$name.instrument.log" 2>&1; then
+    fail "counter ($name): the pass accepted it"
+  elif grep -q "$message" "$OUT/counter_$name.instrument.log"; then
+    echo "counter ($name): refused ($message)"
+  else
+    fail "counter ($name): failed, but not with '$message' (see $OUT/counter_$name.instrument.log)"
+  fi
+done
+
 echo
 [ $failures -eq 0 ] && echo "ALL PASS TESTS PASSED" || { echo "$failures FAILURE(S)"; exit 1; }
