@@ -9,10 +9,11 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#define HUX_FALLBACK(type, name)                                                                   \
-  __attribute__((weak)) type __VERIFIER_nondet_##name(void) {                                     \
-    printf("unrecorded " #name "\n");                                                              \
-    return (type)0;                                                                                \
+#define HUX_FALLBACK(type, name)                            \
+  __attribute__((weak)) type __VERIFIER_nondet_##name(void) \
+  {                                                         \
+    printf("unrecorded " #name "\n");                       \
+    return (type)0;                                         \
   }
 
 HUX_FALLBACK(bool, bool)

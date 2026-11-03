@@ -83,33 +83,25 @@ value that is not a non-negative integer is an error.
 
 ### Instrumentation report (`REPORT`)
 
-The report lists, for each instrumented function, its blocks and their weights. Under
-`uncounted_calls` it lists the calls that the top function may execute whose callee has no code
-in the sources, so its cost is **not** counted: functions that are only declared (`external`,
-with the number of call sites) and `inline_asm`. `indirect_calls` counts the calls through a
-function pointer: their callee is counted when it is defined in the sources.
+The report lists, for each instrumented function, its blocks and their weights. `uncounted_calls`
+lists the calls that the top function may execute whose callee has no code in the sources, so its
+cost is **not** counted.
 
-The calls are collected from the functions the top function reaches through direct calls. As soon
-as one of them makes an indirect call, every function whose address is taken is considered
-reachable too, since the pass does not know which one the pointer holds.
-
-### Harness contract (`include/hux.h`)
+### Harness (`include/hux.h`)
 
 The harness is a C file with a `main` that:
 
-1. assigns every input of the top function from `__VERIFIER_nondet_<type>()`, optionally
-   constrained with `__VERIFIER_assume`;
-2. records each input with `HUX_RECORD_INT`, `HUX_RECORD_UINT` or `HUX_RECORD_FLOAT`
-   (`name`, `value`);
-3. calls `HUX_START()` right before the top function, then calls it;
+1. assigns every input of the top function from `__VERIFIER_nondet_<type>()`, optionally constrained
+   with `__VERIFIER_assume`;
+2. records each input (`name`, `value`), necessary for replaying a counterexample;
+3. calls `HUX_START()` right before the top function to reset the counter (helpful in case other
+   functions are called before it), then calls it;
 4. ends with `HUX_CHECK_BUCKET()`.
-
-Because every function defined in the sources is instrumented, the harness may call other
-functions before the top one, for example a model's initialize function: `HUX_START()` resets the
-counter, so only the top function's call is measured.
 
 The same file serves both `prove` and `replay`: `replay` compiles it with `-DHUX_REPLAY`. See
 `tests/*/harness.c`.
+
+TODO: add an automatic harness generator.
 
 ### `prove` output
 
@@ -139,31 +131,27 @@ log: path/to/b8.replay.log
 
 These are reported, not worked around.
 
-- **Floating point.** SeaHorn treats floating-point operations and comparisons as
-  non-deterministic. That keeps `empty` verdicts sound but makes some `reachable` verdicts
-  spurious. Its counterexamples never contain floating-point values, which then default to 0
-  during replay and appear under `unrecorded`. In practice, a bucket whose cost depends on float
-  inputs gets a `reachable` verdict whose replay usually lands outside the bucket. Such a bucket
-  is undecided.
+- **Floating point.** SeaHorn treats floating-point operations and comparisons as non-deterministic.
+  That keeps `empty` verdicts sound but makes some `reachable` verdicts spurious. Its
+  counterexamples never contain floating-point values, which then default to 0 during replay and
+  appear under `unrecorded`. In practice, a bucket whose cost depends on float inputs gets a
+  `reachable` verdict whose replay usually lands outside the bucket. Such a bucket is undecided.
 - **Integers.** SeaHorn encodes integers as mathematical integers, so wraparound is not modeled
-  (seahorn/seahorn#537). The replay catches spurious witnesses. An `empty` verdict on code that
+  (seahorn/seahorn#550). The replay catches spurious witnesses. An `empty` verdict on code that
   really overflows may be wrong.
 - **LLVM semantics.** SeaHorn optimizes the IR and may exploit undefined behavior (for example
   `nsw`). Verdicts hold for that semantics.
 - **Depth.** Witnesses for long paths time out: on `loop3`, around 600 loop iterations. Proving
   a bucket empty above the maximum also times out when the loop bound is large (100,000 on
   `loop3`).
-- **Uncounted code.** The cost of callees listed under `uncounted_calls` is not counted, and
-  neither is an indirect call to a function without code in the sources.
+- **Uncounted code.** The cost of callees listed under `uncounted_calls` is not counted.
 - **Weights.** The default weight is "one per instruction". Weights come from a hand-written file
   and are not taken from the platform's cost model.
 
+<!--
 ## Development
 
-The dev container (`.devcontainer/`, for VS Code's Dev Containers) runs natively on the host's
-architecture, so it is not emulated on Apple Silicon. It has LLVM 14, the version of the SeaHorn
-image, plus CMake, Ninja and clangd. The CMake Tools extension configures `pass/` in `pass/build`,
-and clangd reads the compile commands from there.
+The repo contains a dev container supposed to be used with VS Code's Dev Containers extension.
 
 ### The counter variable
 
@@ -226,3 +214,4 @@ docker run --rm --platform linux/amd64 -v "$PWD/tests":/data/tests \
   - a fully determined counterexample must replay inside its bucket;
   - no cost reached by native random sampling (`sample.c`, including ±inf and NaN) may lie in a
     bucket proven `empty`.
+-->
