@@ -18,7 +18,7 @@ for dir in ${INCLUDES:-}; do includes+=("-I$dir"); done
 bcs=()
 for src in $SRCS; do
   bc="$work/$(basename "$src").bc"
-  clang-14 -c -emit-llvm -O0 -Xclang -disable-O0-optnone -g0 -m64 \
+  clang-14 -c -emit-llvm -O0 -Xclang -disable-O0-optnone -g0 \
     "${includes[@]}" ${CFLAGS:-} "$src" -o "$bc"
   bcs+=("$bc")
 done

@@ -1,0 +1,45 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/docker-existing-dockerfile
+{
+	"name": "CostBucketProver",
+	"build": {
+		// Sets the run context to one level up instead of the .devcontainer folder.
+		"context": "..",
+		"dockerfile": "./Dockerfile"
+	},
+	"workspaceMount": "source=${localWorkspaceFolder},target=/cost-bucket-prover,type=bind,consistency=cached",
+	"workspaceFolder": "/cost-bucket-prover",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"streetsidesoftware.code-spell-checker",
+				"llvm-vs-code-extensions.vscode-clangd",
+				"ms-vscode.cmake-tools",
+				"redhat.vscode-yaml",
+				"eamodio.gitlens",
+				"davidanson.vscode-markdownlint"
+			],
+			"settings": {
+				"cmake.sourceDirectory": "/cost-bucket-prover/pass",
+				"cmake.buildDirectory": "/cost-bucket-prover/pass/build",
+				"cmake.generator": "Ninja",
+				"cmake.configureSettings": {
+					"CMAKE_C_COMPILER": "clang-14",
+					"CMAKE_CXX_COMPILER": "clang++-14",
+					"LLVM_DIR": "/usr/lib/llvm-14/lib/cmake/llvm",
+					"CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+				},
+				"clangd.path": "/usr/bin/clangd-14",
+				"clangd.arguments": ["--compile-commands-dir=/cost-bucket-prover/pass/build"]
+			}
+		}
+	},
+	"features": {
+		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+	},
+	// The Docker daemon is the host's: a bind mount of `docker run` needs the host's path of the
+	// repository, e.g. `-v "$LOCAL_WORKSPACE_FOLDER/tests":/data/tests`.
+	"remoteEnv": {
+		"LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
+	}
+}

@@ -68,8 +68,8 @@ EOF
 clang-14 -m64 -O0 tests/calls/native.c "$IR" -o "$OUT/calls_native" &&
   "$OUT/calls_native" >"$OUT/calls.native.txt" || fail "calls: native oracle"
 cost3=$(awk '$1 == 3 { print $2 }' "$OUT/calls.native.txt")
-max=$(awk '{ print $2 }' "$OUT/calls.native.txt" | sort -n | tail -n 1)
-echo "calls native costs (n cost):" $(awk '{ printf "%s:%s ", $1, $2 }' "$OUT/calls.native.txt")
+max=$(awk '$1 ~ /^[0-9]+$/ { print $2 }' "$OUT/calls.native.txt" | sort -n | tail -n 1)
+echo "calls native costs (n cost):" $(awk '$1 ~ /^[0-9]+$/ { printf "%s:%s ", $1, $2 }' "$OUT/calls.native.txt")
 check b3 "$cost3" "$((cost3 + 1))" reachable "$cost3"
 check above "$((max + 1))" "" empty
 

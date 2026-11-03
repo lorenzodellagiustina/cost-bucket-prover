@@ -140,6 +140,32 @@ These are reported, not worked around.
 - **Weights.** The default weight is "one per instruction". Weights come from a hand-written file
   and are not taken from the platform's cost model.
 
+## Development
+
+The dev container (`.devcontainer/`, for VS Code's Dev Containers) runs natively on the host's
+architecture, so it is not emulated on Apple Silicon. It has LLVM 14, the version of the SeaHorn
+image, plus CMake, Ninja and clangd. The CMake Tools extension configures `pass/` in `pass/build`,
+and clangd reads the compile commands from there.
+
+The pass alone is tested without SeaHorn, in seconds, from the dev container:
+
+```bash
+tests/run_pass.sh
+```
+
+It builds the pass, instruments the test programs, runs them natively, and checks the block weights
+and the costs:
+
+- **`loop3`** at `-O0`: the exact block weights and a cost of `13n + 13`.
+- **`collatz`** at `-O1`: its blocks start with `phi` nodes, after which the increments must go,
+  and its cost is affine in the number of loop steps.
+- **`calls`**: every defined function is instrumented, including the callee reached only through
+  a pointer.
+
+The end-to-end tests below need the SeaHorn image. From the dev container, they run through
+Docker outside of Docker: the daemon is the host's, so the bind mount takes the host's path,
+`$LOCAL_WORKSPACE_FOLDER/tests`.
+
 ## Tests
 
 ```bash
