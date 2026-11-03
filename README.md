@@ -39,7 +39,7 @@ variables. All paths are container paths, relative to the working directory `/da
 
 | Target | Required | Optional | Produces |
 |---|---|---|---|
-| `instrument` | `SRCS`, `TOP_FUNCTION`, `OUTPUT` | `INCLUDES`, `CFLAGS`, `WEIGHTS`, `REPORT` | instrumented `.ll`; JSON block report |
+| `instrument` | `SRCS`, `TOP_FUNCTION`, `OUTPUT` | `INCLUDES`, `CFLAGS`, `WEIGHTS`, `REPORT` | instrumented `.ll`; YAML block report |
 | `prove` | `HARNESS`, `IR`, `LO`, `OUTPUT` | `HI` (unset means unbounded above), `INCLUDES`, `TIMEOUT` (120 s), `CEX` | YAML verdict; counterexample `.ll`; log |
 | `replay` | `HARNESS`, `IR`, `CEX`, `OUTPUT` | `INCLUDES`, `TIMEOUT` (30 s) | YAML with cost and inputs; log |
 
@@ -57,11 +57,16 @@ command was called wrongly or the tool failed.
 
 The `WEIGHTS` file maps LLVM opcode names to weights:
 
-```json
-{ "default": 1, "opcodes": { "load": 2, "store": 2, "call": 4 } }
+```yaml
+default: 1
+opcodes:
+  load: 2
+  store: 2
+  call: 4
 ```
 
-Without a file, every instruction weighs 1. Debug intrinsics always weigh 0.
+Without a file, every instruction weighs 1. Debug intrinsics always weigh 0. An unknown key or a
+value that is not a non-negative integer is an error.
 
 ### Instrumentation report (`REPORT`)
 
@@ -146,6 +151,16 @@ The dev container (`.devcontainer/`, for VS Code's Dev Containers) runs natively
 architecture, so it is not emulated on Apple Silicon. It has LLVM 14, the version of the SeaHorn
 image, plus CMake, Ninja and clangd. The CMake Tools extension configures `pass/` in `pass/build`,
 and clangd reads the compile commands from there.
+
+The pass (`pass/`) is split by responsibility:
+
+| File | Role |
+|---|---|
+| `Plugin.cpp` | Registers the pass with the new pass manager and parses `<top=…;weights=…;report=…>`. |
+| `CostCounterPass.h/.cpp` | The instrumentation: computes each block's weight and inserts the increments. |
+| `Weights.h/.cpp` | The per-opcode weights, read from the YAML `WEIGHTS` file. |
+| `CallAnalysis.h/.cpp` | The calls the top function may execute whose cost is not counted. |
+| `Report.h/.cpp` | The YAML report. |
 
 The pass alone is tested without SeaHorn, in seconds, from the dev container:
 

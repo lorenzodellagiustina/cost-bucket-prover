@@ -21,9 +21,9 @@ cmake -S "$ROOT/pass" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
   { echo "FAIL: building the pass (see $OUT/cmake.log)"; exit 1; }
 export PREFIX=$BUILD/install
 
-# instrument NAME TOP SRC [CFLAGS]: instrumented IR at $OUT/NAME.ll, report at $OUT/NAME.json.
+# instrument NAME TOP SRC [CFLAGS]: instrumented IR at $OUT/NAME.ll, report at $OUT/NAME.yaml.
 instrument() {
-  SRCS=$3 TOP_FUNCTION=$2 CFLAGS=${4:-} OUTPUT="$OUT/$1.ll" REPORT="$OUT/$1.json" \
+  SRCS=$3 TOP_FUNCTION=$2 CFLAGS=${4:-} OUTPUT="$OUT/$1.ll" REPORT="$OUT/$1.yaml" \
     "$ROOT/scripts/instrument.sh" >"$OUT/$1.instrument.log" 2>&1 ||
     { fail "$1: instrument (see $OUT/$1.instrument.log)"; return 1; }
 }
@@ -37,8 +37,8 @@ native() {
 
 # --- loop3 at -O0: exact block weights, cost 13n + 13 -----------------------------------------
 if instrument loop3 loop3 "$ROOT/tests/loop3/loop3.c" && native loop3 "$ROOT/tests/loop3/native.c"; then
-  weights=$(grep -o '"weight": [0-9]*' "$OUT/loop3.json" | awk '{ printf "%s ", $2 }')
-  [ "$weights" = "7 4 5 4 2 " ] || fail "loop3: block weights '$weights', expected '7 4 5 4 2 '"
+  weights=$(python3 -c 'import sys, yaml; print(" ".join(str(b["weight"]) for f in yaml.safe_load(open(sys.argv[1]))["functions"] for b in f["blocks"]))' "$OUT/loop3.yaml")
+  [ "$weights" = "7 4 5 4 2" ] || fail "loop3: block weights '$weights', expected '7 4 5 4 2'"
   while read -r n cost; do
     [ "$cost" -eq $((13 * n + 13)) ] || fail "loop3: cost($n) = $cost, expected $((13 * n + 13))"
   done <"$OUT/loop3.costs"
@@ -58,9 +58,9 @@ fi
 
 # --- calls: every defined function counted, however it is called ------------------------------
 if instrument calls top "$ROOT/tests/calls/calls.c" && native calls "$ROOT/tests/calls/native.c"; then
-  python3 - "$OUT/calls.json" <<'EOF' || fail "calls: instrumentation report"
-import json, sys
-r = json.load(open(sys.argv[1]))
+  python3 - "$OUT/calls.yaml" <<'EOF' || fail "calls: instrumentation report"
+import sys, yaml
+r = yaml.safe_load(open(sys.argv[1]))
 names = {f["name"] for f in r["functions"]}
 assert {"top", "helper", "init", "twice"} <= names, names  # every defined function
 assert r["indirect_calls"] == 1, r["indirect_calls"]

@@ -7,7 +7,13 @@ message(STATUS "Using LLVM ${LLVM_PACKAGE_VERSION} from ${LLVM_DIR}")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_library(HuxCostCounter MODULE CostCounterPass.cpp)
+add_library(HuxCostCounter MODULE
+  Plugin.cpp
+  CostCounterPass.cpp
+  CallAnalysis.cpp
+  Report.cpp
+  Weights.cpp
+)
 target_include_directories(HuxCostCounter SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
 target_compile_definitions(HuxCostCounter PRIVATE ${LLVM_DEFINITIONS})
 if(NOT LLVM_ENABLE_RTTI)

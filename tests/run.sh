@@ -43,10 +43,10 @@ check() {
 
 # --- loop3: cost = 13n + 13, n in [0, 100000] -----------------------------------------------
 CASE=loop3 HARNESS=tests/loop3/harness.c INCLUDES="" IR=$OUT/loop3.ll
-$M instrument SRCS=tests/loop3/loop3.c TOP_FUNCTION=loop3 OUTPUT="$IR" REPORT="$OUT/loop3.report.json" ||
+$M instrument SRCS=tests/loop3/loop3.c TOP_FUNCTION=loop3 OUTPUT="$IR" REPORT="$OUT/loop3.report.yaml" ||
   fail "loop3: instrument"
-weights=$(grep -o '"weight": [0-9]*' "$OUT/loop3.report.json" | awk '{ printf "%s ", $2 }')
-[ "$weights" = "7 4 5 4 2 " ] || fail "loop3: block weights '$weights', expected '7 4 5 4 2 '"
+weights=$(python3 -c 'import sys, yaml; print(" ".join(str(b["weight"]) for f in yaml.safe_load(open(sys.argv[1]))["functions"] for b in f["blocks"]))' "$OUT/loop3.report.yaml")
+[ "$weights" = "7 4 5 4 2" ] || fail "loop3: block weights '$weights', expected '7 4 5 4 2'"
 check b27 27 28 empty
 check b52 52 53 reachable 52
 check b53 53 65 empty
@@ -54,11 +54,11 @@ check b806 806 807 reachable 806
 
 # --- calls: a helper also called before the top function, a callee reached by pointer ----------
 CASE=calls HARNESS=tests/calls/harness.c INCLUDES="" IR=$OUT/calls.ll
-$M instrument SRCS=tests/calls/calls.c TOP_FUNCTION=top OUTPUT="$IR" REPORT="$OUT/calls.report.json" ||
+$M instrument SRCS=tests/calls/calls.c TOP_FUNCTION=top OUTPUT="$IR" REPORT="$OUT/calls.report.yaml" ||
   fail "calls: instrument"
-python3 - "$OUT/calls.report.json" <<'EOF' || fail "calls: instrumentation report"
-import json, sys
-r = json.load(open(sys.argv[1]))
+python3 - "$OUT/calls.report.yaml" <<'EOF' || fail "calls: instrumentation report"
+import sys, yaml
+r = yaml.safe_load(open(sys.argv[1]))
 names = {f["name"] for f in r["functions"]}
 assert {"top", "helper", "init", "twice"} <= names, names  # every defined function
 assert r["indirect_calls"] == 1, r["indirect_calls"]
@@ -77,7 +77,7 @@ check above "$((max + 1))" "" empty
 CASE=state_machine HARNESS=tests/state_machine/harness.c INCLUDES=tests/state_machine/src
 IR=$OUT/state_machine.ll
 $M instrument SRCS="$(ls tests/state_machine/src/*.c | tr '\n' ' ')" TOP_FUNCTION=state_machine_step \
-  INCLUDES="$INCLUDES" OUTPUT="$IR" REPORT="$OUT/state_machine.report.json" ||
+  INCLUDES="$INCLUDES" OUTPUT="$IR" REPORT="$OUT/state_machine.report.yaml" ||
   fail "state_machine: instrument"
 clang-14 -m64 -O0 -Itests/state_machine/src tests/state_machine/sample.c "$IR" -lm -o "$OUT/sample" &&
   "$OUT/sample" 20000 | sort -n | uniq -c >"$OUT/state_machine.sampled.txt" ||

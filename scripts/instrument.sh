@@ -3,7 +3,7 @@
 # from TOP_FUNCTION.
 #
 # Inputs (environment): SRCS, TOP_FUNCTION, OUTPUT (instrumented .ll);
-#   optional: INCLUDES, CFLAGS, WEIGHTS (JSON), REPORT (pass report, JSON).
+#   optional: INCLUDES, CFLAGS, WEIGHTS (YAML), REPORT (pass report, YAML).
 set -euo pipefail
 : "${SRCS:?}" "${TOP_FUNCTION:?}" "${OUTPUT:?}"
 PREFIX=${PREFIX:-/opt/cost-bucket-prover}
