@@ -79,18 +79,32 @@ IR=$OUT/state_machine.ll
 $M instrument SRCS="$(ls tests/state_machine/src/*.c | tr '\n' ' ')" TOP_FUNCTION=state_machine_step \
   INCLUDES="$INCLUDES" OUTPUT="$IR" REPORT="$OUT/state_machine.report.yaml" ||
   fail "state_machine: instrument"
-clang-14 -m64 -O0 -Itests/state_machine/src tests/state_machine/sample.c "$IR" -lm -o "$OUT/sample" &&
-  "$OUT/sample" 20000 | sort -n | uniq -c >"$OUT/state_machine.sampled.txt" ||
-  fail "state_machine: sampling oracle"
-echo "state_machine sampled costs (count cost):" $(awk '{ printf "%s:%s ", $1, $2 }' "$OUT/state_machine.sampled.txt")
+# Sampling oracle: the `sample` target on pseudo-random rows (tests/state_machine/rows.py).
+python3 tests/state_machine/rows.py "${SAMPLES:-20000}" "$OUT/state_machine.rows.tsv"
+start=$(date +%s.%N)
+$M sample HARNESS="$HARNESS" IR="$IR" INCLUDES="$INCLUDES" ROWS="$OUT/state_machine.rows.tsv" \
+  OUTPUT="$OUT/state_machine.sample.yaml"
+end=$(date +%s.%N)
+python3 - "$OUT/state_machine.sample.yaml" >"$OUT/state_machine.sampled.txt" <<'EOF' ||
+import collections, sys, yaml
+r = yaml.safe_load(open(sys.argv[1]))
+assert r["status"] == "ok", r["message"]
+for cost, count in sorted(collections.Counter(x["cost"] for x in r["rows"] if x["status"] == "ok").items()):
+    print(count, cost)
+EOF
+  fail "state_machine: sampling oracle (see $OUT/state_machine.sample.yaml)"
+echo "state_machine sampled costs (count cost):" $(awk '{ printf "%s:%s ", $1, $2 }' "$OUT/state_machine.sampled.txt") \
+  "in $(awk -v a="$start" -v b="$end" 'BEGIN { printf "%.1f", b - a }') s"
 
 while read -r name lo hi want; do
   [ "$hi" = - ] && hi=""
   check "$name" "$lo" "$hi" "$want"
+  hit=$(awk -v lo="$lo" -v hi="$hi" '$2 >= lo && (hi == "" || $2 < hi) { print $2 }' "$OUT/state_machine.sampled.txt" | head -n 1)
   if [ "$(field verdict "$OUT/state_machine.$name.prove.yaml")" = empty ]; then
-    hit=$(awk -v lo="$lo" -v hi="$hi" '$2 >= lo && (hi == "" || $2 < hi) { print $2 }' "$OUT/state_machine.sampled.txt" | head -n 1)
     [ -z "$hit" ] || fail "state_machine [$lo,${hi:-inf}) proven empty, but sampling reached cost $hit"
   fi
+  # The reachable buckets of buckets.txt were found by sampling: the rows must still reach them.
+  [ "$want" != reachable ] || [ -n "$hit" ] || fail "state_machine [$lo,${hi:-inf}) not reached by sampling"
 done <tests/state_machine/buckets.txt
 
 echo

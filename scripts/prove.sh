@@ -29,9 +29,12 @@ export C_INCLUDE_PATH
 defines=("-DHUX_LO=${LO}LL")
 [ -n "${HI:-}" ] && defines+=("-DHUX_HI=${HI}LL")
 
+# --crab: the Crab abstract interpreter computes numerical invariants (zones: bounds on x - y) and
+# passes them to Spacer, which alone often fails to find loop invariants such as "cost - 13 i is
+# constant" (and then times out on bounds of loops it does not unroll).
 rm -f "$CEX"
 start=$(date +%s.%N)
-timeout --kill-after=5 "$TIMEOUT" sea pf -m64 --inline "${defines[@]}" \
+timeout --kill-after=5 "$TIMEOUT" sea pf -m64 --inline --crab --crab-dom=zones "${defines[@]}" \
   --cex="$CEX" "$HARNESS" "$IR" >"$LOG" 2>&1
 rc=$?
 end=$(date +%s.%N)

@@ -20,6 +20,9 @@ cmake -S "$ROOT/pass" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
   cmake --install "$BUILD" >>"$OUT/cmake.log" 2>&1 ||
   { echo "FAIL: building the pass (see $OUT/cmake.log)"; exit 1; }
 export PREFIX=$BUILD/install
+# The scripts also need the headers and runtimes, which the image copies next to lib/.
+ln -sfn "$ROOT/include" "$PREFIX/include"
+ln -sfn "$ROOT/runtime" "$PREFIX/runtime"
 
 # instrument NAME TOP SRC [CFLAGS]: instrumented IR at $OUT/NAME.ll, report at $OUT/NAME.yaml.
 instrument() {
@@ -73,6 +76,36 @@ EOF
   [ "$deltas" -eq 1 ] || fail "calls: cost(n + 1) - cost(n) is not constant"
   echo "calls: twice counted (cost $op through the pointer); costs" \
     $(awk '$1 ~ /^[0-9]+$/ { printf "%s:%s ", $1, $2 }' "$OUT/calls.costs")
+fi
+
+# --- sample: the harness run natively once per row, each row in a fresh process ----------------
+# loop3's harness: n = 0..3 and 61 cost 13n + 13; n = -1 violates the assumption. The second rows
+# file has no column `n`, which stops the run.
+if [ -f "$OUT/loop3.ll" ]; then
+  printf 'n\textra\n0\tx\n1\tx\n-1\tx\n2\tx\n3\tx\n61\tx\n' >"$OUT/rows.tsv"
+  HARNESS="$ROOT/tests/loop3/harness.c" IR="$OUT/loop3.ll" ROWS="$OUT/rows.tsv" PRINT_INPUTS=1 \
+    OUTPUT="$OUT/sample.yaml" "$ROOT/scripts/sample.sh"
+  python3 - "$OUT/sample.yaml" <<'EOF' || fail "sample: loop3 rows (see $OUT/sample.yaml)"
+import sys, yaml
+r = yaml.safe_load(open(sys.argv[1]))
+assert r["status"] == "ok" and r["message"] is None, r
+got = [(row["status"], row.get("cost")) for row in r["rows"]]
+assert got == [("ok", 13), ("ok", 26), ("rejected", None), ("ok", 39), ("ok", 52), ("ok", 806)], got
+assert r["rows"][5]["inputs"] == [{"name": "n", "kind": "int", "value": "61"}], r["rows"][5]
+EOF
+  # Bare file names, from the working directory: the sampler must not be looked up in PATH.
+  (cd "$OUT" && HARNESS="$ROOT/tests/loop3/harness.c" IR=loop3.ll ROWS=rows.tsv OUTPUT=sample_here.yaml \
+    "$ROOT/scripts/sample.sh") && grep -q '^status: ok' "$OUT/sample_here.yaml" ||
+    fail "sample: with bare file names (see $OUT/sample_here.yaml)"
+  printf 'm\n0\n' >"$OUT/rows_bad.tsv"
+  HARNESS="$ROOT/tests/loop3/harness.c" IR="$OUT/loop3.ll" ROWS="$OUT/rows_bad.tsv" \
+    OUTPUT="$OUT/sample_bad.yaml" "$ROOT/scripts/sample.sh"
+  python3 - "$OUT/sample_bad.yaml" <<'EOF' || fail "sample: missing column (see $OUT/sample_bad.yaml)"
+import sys, yaml
+r = yaml.safe_load(open(sys.argv[1]))
+assert r["status"] == "input_error" and "no column 'n'" in r["message"] and r["rows"] == [], r
+EOF
+  echo "sample (loop3): status:cost" $(python3 -c 'import sys, yaml; print(" ".join("%s:%s" % (x["status"], x.get("cost")) for x in yaml.safe_load(open(sys.argv[1]))["rows"]))' "$OUT/sample.yaml") "; missing column reported"
 fi
 
 # --- a counter already in the module: used with a warning if it can be incremented, else refused ---

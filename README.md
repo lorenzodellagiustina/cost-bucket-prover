@@ -21,9 +21,15 @@ The tool is a Docker image driven through `make`.
    - **unsat**: the bucket is **empty**, proven for every input admitted by the harness.
    - **sat**: the bucket is **reachable**. SeaHorn also writes a counterexample harness (`.ll`) with
      the values of the nondet calls.
-3. **`replay`.** Builds the harness natively, links it with the counterexample, runs it, and prints
-   the measured cost together with every input as executed. A reachable bucket only becomes a
-   witness when the replayed cost actually lies in the bucket.
+3. **`replay`.** Builds the harness, links it with the counterexample, runs it, and prints the
+   measured cost together with every input as executed. A reachable bucket only becomes a witness
+   when the replayed cost actually lies in the bucket.
+4. **`sample`.** Builds the harness and runs it once per row of a file of input values, each row in
+   a fresh process, and reports the cost of each row. The caller uses it to find witnesses by
+   sampling before asking the prover, which is then needed only for the buckets no row reached.
+   TODO: in the future this should not be responsibility of the cost-bucket-prover. It should be
+   like a feedback loop: ITM generation of witnesses -> SCHG measure cost -> ITM generation of
+   witnesses via the cost-bucket-prover -> SCHG measure cost -> exit (not really a loop).
 
 ## Build
 
@@ -39,11 +45,10 @@ The image is tagged with the hash of the commit it is built from (`<ref>` below)
 > SeaHorn images exist only for amd64. On Apple Silicon build the image for amd64:
 >
 > ```bash
-> docker build --platform linux/amd64 -t cost-bucket-prover:$(git rev-parse --short=9 HEAD) .
+> docker build --platform linux/amd64 -t cost-bucket-prover:$(git rev-parse HEAD) .
 > ```
 >
 > Then the image can be run on Apple Silicon through emulation.
-
 
 ## Usage
 
@@ -51,10 +56,11 @@ The entrypoint is `make -f /opt/cost-bucket-prover/Makefile`, so a command is a 
 variables. All paths are container paths, relative to the working directory `/data`.
 
 | Target | Required | Optional | Produces |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `instrument` | `SRCS`, `TOP_FUNCTION`, `OUTPUT` | `INCLUDES`, `CFLAGS`, `WEIGHTS`, `REPORT` | instrumented `.ll`; YAML block report |
 | `prove` | `HARNESS`, `IR`, `LO`, `OUTPUT` | `HI` (unset means unbounded above), `INCLUDES`, `TIMEOUT` (120 s), `CEX` | YAML verdict; counterexample `.ll`; log |
 | `replay` | `HARNESS`, `IR`, `CEX`, `OUTPUT` | `INCLUDES`, `TIMEOUT` (30 s) | YAML with cost and inputs; log |
+| `sample` | `HARNESS`, `IR`, `ROWS`, `OUTPUT` | `INCLUDES`, `TIMEOUT` (10 s per row), `PRINT_INPUTS` (`1`: list the inputs of each row), `EXE` (sampler executable, built if missing) | YAML with the cost of each row; log |
 
 Example:
 
@@ -63,7 +69,7 @@ docker run --rm --platform linux/amd64 -v "$PWD":/data cost-bucket-prover:<ref> 
   prove HARNESS=harness.c IR=out.ll LO=52 HI=53 OUTPUT=b52.yaml
 ```
 
-`prove` and `replay` exit with 0 for every verdict or status. A non-zero exit code means the
+`prove`, `replay` and `sample` exit with 0 for every verdict or status. A non-zero exit code means the
 command was called wrongly or the tool failed.
 
 ### Weights
@@ -91,14 +97,22 @@ cost is **not** counted.
 
 The harness is a C file with a `main` that:
 
-1. assigns every input of the top function from `__VERIFIER_nondet_<type>()`, optionally constrained
-   with `__VERIFIER_assume`;
-2. records each input (`name`, `value`), necessary for replaying a counterexample;
-3. calls `HUX_START()` right before the top function to reset the counter (helpful in case other
-   functions are called before it), then calls it;
-4. ends with `HUX_CHECK_BUCKET()`.
+1. assigns every input of the top function;
+2. resets the counter (helpful in case other functions are called before it), then calls the top function;
+3. ends with `HUX_CHECK_BUCKET()`.
 
-The same file serves both `prove` and `replay`: `replay` compiles it with `-DHUX_REPLAY`. See
+For example:
+
+```c
+HUX_INPUT(double, "state_machine_U.brake", state_machine_U.brake);
+HUX_INPUT(uchar, "state_machine_DW.is_c3_state_machine", state_machine_DW.is_c3_state_machine);
+__VERIFIER_assume(state_machine_DW.is_c3_state_machine >= 1 &&
+                  state_machine_DW.is_c3_state_machine <= 4);
+```
+
+The same file serves `prove`, `replay` (compiled with `-DHUX_REPLAY`) and `sample` (compiled
+with `-DHUX_SAMPLE`): `HUX_INPUT` assigns a nondet value, prints the value as executed, or reads it
+from the current row by its name. See
 `tests/*/harness.c`.
 
 TODO: add an automatic harness generator.
@@ -127,6 +141,25 @@ unrecorded:             # nondet types the counterexample did not determine (the
 log: path/to/b8.replay.log
 ```
 
+### `sample` input and output
+
+`ROWS` is tab-separated: the first line holds the input names (the `name`s of `HUX_INPUT`), each
+following line one row of values. Integers are decimal, floats anything `strtod` accepts (including
+`inf` and `nan`), bools `0`, `1`, `true` or `false`. Columns the harness does not read are ignored.
+
+```yaml
+rows:                   # one entry per row run, in order
+  - { status: ok, cost: 15 }
+  - { status: rejected }  # a __VERIFIER_assume is false: the row is not a valid input
+  - { status: ok, cost: 8, inputs: [{ name: "n", kind: int, value: "0" }] }  # PRINT_INPUTS=1
+status: ok              # ok | input_error | build_error
+message: null           # what is wrong, unless ok
+```
+
+A row is `crash` when the harness exits abnormally or without `HUX_CHECK_BUCKET()`, and `timeout`
+after `TIMEOUT` seconds. With `input_error` (a missing column, or a value that is not of its input's
+type) the run stops at that row.
+
 ## Known limitations
 
 These are reported, not worked around.
@@ -138,12 +171,17 @@ These are reported, not worked around.
   `reachable` verdict whose replay usually lands outside the bucket. Such a bucket is undecided.
 - **Integers.** SeaHorn encodes integers as mathematical integers, so wraparound is not modeled
   (seahorn/seahorn#550). The replay catches spurious witnesses. An `empty` verdict on code that
-  really overflows may be wrong.
+  really overflows may be wrong. Mathematical integers also lack their type's range: in prove mode,
+  `HUX_INPUT` therefore draws an integer input narrower than 64 bits from a wider type and assumes
+  it in its type's range (see `include/hux.h`). Values computed inside the program get no such
+  range.
 - **LLVM semantics.** SeaHorn optimizes the IR and may exploit undefined behavior (for example
   `nsw`). Verdicts hold for that semantics.
-- **Depth.** Witnesses for long paths time out: on `loop3`, around 600 loop iterations. Proving
-  a bucket empty above the maximum also times out when the loop bound is large (100,000 on
-  `loop3`).
+- **Depth.** Witnesses for long paths time out: on `loop3`, around 600 loop iterations. With Crab,
+  the bound of a counting loop of up to a few hundred iterations is proved in seconds (200 or 255
+  iterations in the input trace manager's `cost_bucket_demo`), but it still times out when the
+  loop bound is large (100,000 on `loop3`) or when the cost per iteration varies (a branch in the
+  loop body). Why Crab helps on the first and not on the others was not investigated.
 - **Uncounted code.** The cost of callees listed under `uncounted_calls` is not counted.
 - **Weights.** The default weight is "one per instruction". Weights come from a hand-written file
   and are not taken from the platform's cost model.
@@ -191,6 +229,8 @@ and the costs:
   and its cost is affine in the number of loop steps.
 - **`calls`**: every defined function is instrumented, including the callee reached only through
   a pointer.
+- **`sample`**: `loop3`'s harness on a few rows: the costs, a row rejected by the assumption, the
+  inputs as executed, and a missing column.
 
 The end-to-end tests below need the SeaHorn image. From the dev container, they run through
 Docker outside of Docker: the daemon is the host's, so the bind mount takes the host's path,
@@ -212,6 +252,7 @@ docker run --rm --platform linux/amd64 -v "$PWD/tests":/data/tests \
 - **`state_machine`** (Simulink-generated code): runs one step of the model. Its inputs are the
   `real_T` inports plus the chart state. For every bucket the suite checks:
   - a fully determined counterexample must replay inside its bucket;
-  - no cost reached by native random sampling (`sample.c`, including ±inf and NaN) may lie in a
-    bucket proven `empty`.
+  - no cost reached by sampling pseudo-random rows with the `sample` target
+    (`tests/state_machine/rows.py`, including ±inf and NaN) may lie in a bucket proven `empty`;
+  - sampling still reaches every bucket listed as reachable.
 -->
