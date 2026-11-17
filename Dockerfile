@@ -15,6 +15,20 @@ RUN cmake -S /tmp/pass -B /tmp/pass/build -DCMAKE_BUILD_TYPE=Release \
   && cmake --install /tmp/pass/build \
   && rm -rf /tmp/pass
 
+# A newer Z3, beside SeaHorn's own (4.8.9), for `prove` with PROVE_SOLVER=gspacer or portfolio:
+# Spacer with global guidance (`fp.spacer.global`, Z3 4.8.10 and later). 4.13.4 fails on some
+# queries with global guidance ("mbp to-real"), 5.3.2 does not. Not on PATH, not to shadow
+# SeaHorn's.
+RUN pip3 install --no-cache-dir --prefix /opt/z3 z3-solver==5.3.2.0
+ENV Z3_GSPACER=/opt/z3/local/bin/z3
+
+# The solver of `prove`: `sea` (SeaHorn's Spacer, the default), `gspacer` or `portfolio` (read
+# scripts/prove.sh).
+# A build with `--build-arg PROVE_SOLVER=gspacer` changes the default, so a workflow that calls
+# `prove` can compare the two by image tag, unchanged.
+ARG PROVE_SOLVER=sea
+ENV PROVE_SOLVER=${PROVE_SOLVER}
+
 COPY Makefile ${PREFIX}/Makefile
 COPY include ${PREFIX}/include
 COPY runtime ${PREFIX}/runtime

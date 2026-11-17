@@ -58,7 +58,7 @@ variables. All paths are container paths, relative to the working directory `/da
 | Target | Required | Optional | Produces |
 | --- | --- | --- | --- |
 | `instrument` | `SRCS`, `TOP_FUNCTION`, `OUTPUT` | `INCLUDES`, `CFLAGS`, `WEIGHTS`, `REPORT` | instrumented `.ll`; YAML block report |
-| `prove` | `HARNESS`, `IR`, `LO`, `OUTPUT` | `HI` (unset means unbounded above), `INCLUDES`, `TIMEOUT` (120 s), `CEX` | YAML verdict; counterexample `.ll`; log |
+| `prove` | `HARNESS`, `IR`, `LO`, `OUTPUT` | `HI` (unset means unbounded above), `INCLUDES`, `TIMEOUT` (120 s), `CEX`, `PROVE_SOLVER` (`sea`; read below) | YAML verdict; counterexample `.ll`; log |
 | `replay` | `HARNESS`, `IR`, `CEX`, `OUTPUT` | `INCLUDES`, `TIMEOUT` (30 s) | YAML with cost and inputs; log |
 | `sample` | `HARNESS`, `IR`, `ROWS`, `OUTPUT` | `INCLUDES`, `TIMEOUT` (10 s per row), `PRINT_INPUTS` (`1`: list the inputs of each row), `EXE` (sampler executable, built if missing) | YAML with the cost of each row; log |
 
@@ -128,6 +128,25 @@ exit_code: 0
 cex: path/to/b52.cex.ll # null unless reachable
 log: path/to/b52.log
 ```
+
+### `prove` solver (`PROVE_SOLVER`)
+
+| Value | What runs |
+| --- | --- |
+| `sea` (default) | `sea pf --crab`: SeaHorn's Spacer (Z3 4.8.9), with Crab's zone invariants. |
+| `gspacer` | `sea smt` writes the Horn clauses; Z3 5.3.2 solves them with Spacer's global guidance (`fp.spacer.global=true`). On `sat`, `sea pf` runs in the time left only to write the counterexample. |
+| `portfolio` | Both at once, each with the whole `TIMEOUT`, first conclusive answer wins; the log starts with `# portfolio: decided by <solver>`. Twice the CPU. |
+
+Global guidance proves the bounds of counting loops that `sea` cannot: on `tests/loop3`, the bucket
+`[1300014, inf)` (just above the maximum 1300013) is `empty` in 2.5 s with `portfolio` and a
+timeout after 60 s with `sea`. It is much slower on deep reachable buckets (`[806, 807)`: timeout
+with `gspacer`, found in seconds by `sea`), hence `portfolio`. `gspacer` loses Crab's invariants,
+which `sea smt` does not write into the clauses. The tests pass with `sea` and `portfolio`;
+`gspacer` times out on `loop3 [806, 807)`.
+
+The variable can be passed per call (`prove ... PROVE_SOLVER=portfolio`), or made the image's
+default with `docker build --build-arg PROVE_SOLVER=portfolio`, to compare solvers by image tag
+without changing the caller.
 
 ### `replay` output
 
